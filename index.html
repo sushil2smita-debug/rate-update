@@ -299,8 +299,8 @@ body{font-family:'Roboto',sans-serif;background:#f5f5f5;color:#212121;font-size:
         <button class="ibtn" style="color:#1a73e8;font-size:22px;" onclick="sortRates()">⇅</button>
       </div>
       <div class="lview">
-        <div class="lhdr" style="grid-template-columns:1fr 24px;padding:10px 16px;">
-          <span>Party — Latest Rate · Prev Rate · Change · Date</span><span></span>
+        <div class="lhdr" style="grid-template-columns:2fr 90px 70px 60px 110px 24px;">
+          <span>Party / Item</span><span>Latest</span><span>Prev</span><span>Diff</span><span>Date</span><span></span>
         </div>
         <div id="rateList"></div>
       </div>
@@ -714,49 +714,68 @@ function closePopup(){ document.getElementById('npopup').classList.remove('in');
 // ═══════════════════════════════════════
 function renderRates(q=''){
   const el=document.getElementById('rateList');
-  // Group by partyId — keep only latest rate per party per item
+  if(!MEM.rates.length){el.innerHTML='<div style="padding:40px;text-align:center;color:#999;">No records yet. Tap + to add.</div>';return;}
+
+  // For each party+item, find the LATEST entry by changeDate
   const latestMap={};
   MEM.rates.forEach(r=>{
     const key=r.partyId+'__'+r.item;
-    if(!latestMap[key]||parseDateStr(r.timestamp)>parseDateStr(latestMap[key].timestamp)){
-      latestMap[key]=r;
+    const existing=latestMap[key];
+    if(!existing){latestMap[key]=r;return;}
+    // Compare changeDates — pick the most recent one
+    const rDate=parseDateStr(r.changeDate);
+    const eDate=parseDateStr(existing.changeDate);
+    if(rDate>eDate) latestMap[key]=r;
+    else if(rDate.getTime()===eDate.getTime()){
+      // same date — pick later timestamp
+      if(parseDateStr(r.timestamp)>parseDateStr(existing.timestamp)) latestMap[key]=r;
     }
   });
-  let d=Object.values(latestMap).sort((a,b)=>parseDateStr(b.timestamp)-parseDateStr(a.timestamp));
+
+  let d=Object.values(latestMap);
+
   // Filter by search
-  if(q) d=d.filter(r=>{
-    const p=MEM.parties.find(x=>x.id===r.partyId);
-    return(p&&p.name.toLowerCase().includes(q.toLowerCase()))||r.item.toLowerCase().includes(q.toLowerCase());
-  });
-  if(!d.length){el.innerHTML='<div style="padding:40px;text-align:center;color:#999;">No records found</div>';return;}
+  if(q){
+    const ql=q.toLowerCase();
+    d=d.filter(r=>{
+      const p=MEM.parties.find(x=>x.id===r.partyId);
+      return (p&&p.name.toLowerCase().includes(ql))||r.item.toLowerCase().includes(ql);
+    });
+  }
+
+  // Sort by changeDate descending (most recent first)
+  d.sort((a,b)=>parseDateStr(b.changeDate)-parseDateStr(a.changeDate)||parseDateStr(b.timestamp)-parseDateStr(a.timestamp));
+
+  if(!d.length){el.innerHTML='<div style="padding:40px;text-align:center;color:#999;">No results found</div>';return;}
+
   el.innerHTML=d.map(r=>{
     const p=MEM.parties.find(x=>x.id===r.partyId);
-    // Find previous rate for this party+item (second latest)
-    const allForKey=MEM.rates
+    // Get ALL entries for this party+item sorted latest first
+    const allEntries=MEM.rates
       .filter(x=>x.partyId===r.partyId&&x.item===r.item)
-      .sort((a,b)=>parseDateStr(b.timestamp)-parseDateStr(a.timestamp));
-    const prevRate=allForKey.length>1?allForKey[1].newRate:r.oldRate;
+      .sort((a,b)=>parseDateStr(b.changeDate)-parseDateStr(a.changeDate)||parseDateStr(b.timestamp)-parseDateStr(a.timestamp));
+    // Previous rate = second latest entry's newRate
+    const prevRate=allEntries.length>1 ? allEntries[1].newRate : 0;
     const diff=parseFloat((r.newRate-prevRate).toFixed(2));
-    const ds=diff>0?'+'+diff.toFixed(2):diff.toFixed(2);
+    const ds=diff>0?'+'+diff.toFixed(2):diff===0?'0.00':diff.toFixed(2);
     const dc=diff>0?'dpos':diff<0?'dneg':'';
-    const totalChanges=MEM.rates.filter(x=>x.partyId===r.partyId&&x.item===r.item).length;
-    return `<div class="lrow" style="grid-template-columns:1fr auto 24px;padding:12px 16px;" onclick="openPartyDetail('${r.partyId}')">
+    const totalChanges=allEntries.length;
+    return `<div class="lrow" style="grid-template-columns:2fr 90px 70px 60px 110px 24px;" onclick="openPartyDetail('${r.partyId}')">
       <div>
-        <div class="pname" style="font-size:13px;margin-bottom:4px;">${p?p.name:'—'}</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span class="rnew" style="font-size:15px;"><span class="dot dot-r"></span>${r.newRate.toFixed(2)}</span>
-          <span style="color:#aaa;font-size:12px;">prev: <span class="rold" style="font-size:12px;">${prevRate.toFixed(2)}</span></span>
-          <span class="${dc}" style="font-size:12px;font-weight:600;">${ds}</span>
-          <span class="cdate" style="font-size:11px;"><span class="dot dot-y"></span>${r.changeDate}</span>
-        </div>
-        <div style="font-size:11px;color:#888;margin-top:3px;">${r.item} · ${totalChanges} change${totalChanges!==1?'s':''}</div>
+        <div class="pname" style="font-size:13px;">${p?p.name:'—'}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px;">${r.item} &nbsp;·&nbsp; ${totalChanges} change${totalChanges!==1?'s':''}</div>
       </div>
+      <span class="rnew"><span class="dot dot-r"></span>${r.newRate.toFixed(2)}</span>
+      <span class="rold" style="font-size:13px;">${prevRate>0?prevRate.toFixed(2):'—'}</span>
+      <span class="${dc}" style="font-weight:700;">${prevRate>0?ds:'—'}</span>
+      <span class="cdate"><span class="dot dot-y"></span>${r.changeDate}</span>
       <span class="rarr">›</span>
     </div>`;
   }).join('');
 }
 function searchRates(q){rQ=q;renderRates(q);}
-function sortRates(){MEM.rates.sort((a,b)=>parseDateStr(b.timestamp)-parseDateStr(a.timestamp));renderRates(rQ);toast('Sorted by latest');}
+function sortRates(){renderRates(rQ);toast('Sorted by latest date');}
+
 
 // ═══════════════════════════════════════
 //  RATE DETAIL
@@ -806,14 +825,14 @@ function autoFill(){
   // Find latest rate for this party+item combination
   const prev=MEM.rates
     .filter(r=>r.partyId===pid && r.item===item && r.id!==eid)
-    .sort((a,b)=>parseDateStr(b.timestamp)-parseDateStr(a.timestamp));
+    .sort((a,b)=>parseDateStr(b.changeDate)-parseDateStr(a.changeDate)||parseDateStr(b.timestamp)-parseDateStr(a.timestamp));
   if(prev.length>0){
     const lastRate=prev[0].newRate;
     oldEl.value=lastRate.toFixed(2);
-    hint.innerHTML=`✅ Auto-filled: Last rate was <b style="color:#ea4335;">Rs.${lastRate.toFixed(2)}</b> on ${prev[0].changeDate}`;
+    hint.innerHTML=`✅ Auto-filled: Last rate <b style="color:#ea4335;">Rs.${lastRate.toFixed(2)}</b> on ${prev[0].changeDate}`;
   } else {
     oldEl.value='0.00';
-    hint.textContent='First entry for this party & item — old rate set to 0';
+    hint.textContent='First entry — old rate set to 0';
   }
 }
 
