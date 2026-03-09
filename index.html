@@ -965,7 +965,7 @@ function renderParties(q=''){
   const el=document.getElementById('partyList');
   el.innerHTML=d.map(p=>{
     const rc=MEM.rates.filter(r=>r.partyId===p.id).length;
-    const lat=MEM.rates.filter(r=>r.partyId===p.id).sort((a,b)=>parseDateStr(b.timestamp)-parseDateStr(a.timestamp))[0];
+    const lat=MEM.rates.filter(r=>r.partyId===p.id).sort((a,b)=>parseDateStr(b.changeDate)-parseDateStr(a.changeDate)||parseDateStr(b.timestamp)-parseDateStr(a.timestamp))[0];
     const li=lat?`<span style="font-size:11px;color:#ea4335;font-weight:700;margin-left:8px;">Rs.${lat.newRate.toFixed(2)}</span><span style="font-size:10px;color:#999;margin-left:4px;">${lat.changeDate}</span>`:'';
     return `<div class="lrow" style="grid-template-columns:1fr auto 24px;" onclick="openPartyDetail('${p.id}')"><div><div class="pname">${p.name}${li}</div></div><span style="font-size:12px;color:#888;margin-right:8px;">${rc}</span><span class="rarr">&#8250;</span></div>`;
   }).join('');
